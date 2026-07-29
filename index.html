@@ -396,6 +396,7 @@
           <option value="Graphics">Graphics</option>
           <option value="Merch">Merch</option>
           <option value="Upload media">Upload media</option>
+          <option value="Photo/Video">Photo/Video</option>
           <option value="Other">Other</option>
         </select>
       </div>
@@ -502,7 +503,7 @@
   // ---- Admin gate: change this password, then commit. This is a soft gate for an
   // honor-system internal tool, NOT real security — anyone who views the page source
   // can see this password, so don't use it to protect anything sensitive. ----
-  const ADMIN_PASSWORD = "DFR2026";
+  const ADMIN_PASSWORD = "dfr2026";
   let isAdmin = false;
   try{ isAdmin = sessionStorage.getItem('dfr-is-admin') === '1'; }catch(e){}
 

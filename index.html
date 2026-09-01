@@ -515,10 +515,25 @@
       <label>End date (optional — leave blank for a single-day event)</label>
       <input type="date" id="e-end-date" />
     </div>
-    <div class="field">
-      <label>Time (optional)</label>
-      <input type="text" id="e-time" placeholder="e.g. 7:00 PM" />
-    </div>
+<div class="field">
+  <label>Event Time</label>
+  <select id="e-all-day" onchange="toggleEventTimeFields()">
+    <option value="false">Set a time</option>
+    <option value="true">All day</option>
+  </select>
+</div>
+
+<div id="event-time-fields" style="display:flex;gap:10px;">
+  <div class="field" style="flex:1;">
+    <label>Start time</label>
+    <input type="time" id="e-start-time" />
+  </div>
+
+  <div class="field" style="flex:1;">
+    <label>End time</label>
+    <input type="time" id="e-end-time" />
+  </div>
+</div>
     <div class="field">
       <label>Details</label>
       <textarea id="e-notes" placeholder="Where it is, what to bring, etc."></textarea>

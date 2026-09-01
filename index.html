@@ -507,9 +507,13 @@
       <label>Event name</label>
       <input type="text" id="e-title" placeholder="e.g. Race watch party" />
     </div>
-    <div class="field">
+     <div class="field">
       <label>Date</label>
       <input type="date" id="e-date" />
+    </div>
+    <div class="field">
+      <label>End date (optional — leave blank for a single-day event)</label>
+      <input type="date" id="e-end-date" />
     </div>
     <div class="field">
       <label>Time (optional)</label>
@@ -597,10 +601,10 @@
   }
 
   function rowToEvent(row){
-    return { id: row.id, title: row.title, date: row.date, time: row.time, notes: row.notes };
+    return { id: row.id, title: row.title, date: row.date, endDate: row.end_date, time: row.time, notes: row.notes };
   }
   function eventToRow(e){
-    return { id: e.id, title: e.title, date: e.date || null, time: e.time || null, notes: e.notes || null };
+    return { id: e.id, title: e.title, date: e.date || null, end_date: e.endDate || null, time: e.time || null, notes: e.notes || null };
   }
 
   function updateCountLabel(){
@@ -876,7 +880,11 @@
       const cell = document.createElement('div');
       cell.className = 'cal-day' + (dateStr===todayStr ? ' today' : '');
       const dayPosts = fp.filter(p=>p.date===dateStr);
-      const dayEvents = events.filter(ev=>ev.date===dateStr);
+      const dayEvents = events.filter(ev=>{         
+        const start = ev.date;         
+        const end = ev.endDate || ev.date;         
+        return start && dateStr >= start && dateStr <= end;       
+      });
       cell.innerHTML = `<div class="cal-daynum">${day}<span class="cal-add-hint">+ add</span></div>` +
         dayEvents.map(ev=>`<div class="cal-event" data-event-id="${ev.id}" title="${escapeHtml(ev.title||'')}${ev.time ? ' · '+escapeHtml(ev.time) : ''}"><span class="cal-event-icon">🏁</span>${escapeHtml(ev.title||'Event')}${ev.time ? ' · '+escapeHtml(ev.time) : ''}</div>`).join('') +
         dayPosts.map(p=>`<div class="cal-chip ${PLATFORM_CLASS[p.platform]||''}" data-id="${p.id}" title="${escapeHtml(p.title||'')}">${escapeHtml(p.title||'Untitled')}</div>`).join('');
@@ -938,9 +946,10 @@
     document.getElementById('event-modal-title').textContent = readonly ? 'View event' : (ev ? 'Edit event' : 'Add event');
     document.getElementById('e-title').value = ev ? (ev.title||'') : '';
     document.getElementById('e-date').value = ev ? (ev.date||'') : (defaultDate || '');
+    document.getElementById('e-end-date').value = ev ? (ev.endDate||'') : '';
     document.getElementById('e-time').value = ev ? (ev.time||'') : '';
     document.getElementById('e-notes').value = ev ? (ev.notes||'') : '';
-    ['e-title','e-date','e-time','e-notes'].forEach(fid=>{ document.getElementById(fid).readOnly = readonly; });
+    ['e-title','e-date','e-end-date','e-time','e-notes'].forEach(fid=>{ document.getElementById(fid).readOnly = readonly; });
     document.getElementById('event-delete-btn').style.display = (ev && !readonly) ? 'inline-block' : 'none';
     document.getElementById('event-save-btn').style.display = readonly ? 'none' : 'inline-block';
     document.getElementById('event-cancel-btn').textContent = readonly ? 'Close' : 'Cancel';
@@ -955,9 +964,16 @@
   async function saveEvent(){
     const title = document.getElementById('e-title').value.trim();
     if(!title){ alert('Give the event a name first.'); return; }
+const startDate = document.getElementById('e-date').value;
+    const endDateRaw = document.getElementById('e-end-date').value;
+    if(endDateRaw && startDate && endDateRaw < startDate){
+      alert('End date can\'t be before the start date.');
+      return;
+    }
     const data = {
       title,
-      date: document.getElementById('e-date').value,
+      date: startDate,
+      endDate: endDateRaw || null,
       time: document.getElementById('e-time').value.trim(),
       notes: document.getElementById('e-notes').value.trim()
     };

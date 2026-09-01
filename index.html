@@ -282,6 +282,7 @@
     font-family:var(--font-display);font-size:16px;letter-spacing:1px;
     text-transform:uppercase;margin:0;min-width:200px;text-align:center;
   }
+  .cal-nav #add-event-btn{width:auto;height:auto;padding:9px 16px;font-size:12px;}
   .cal-grid{
     display:grid;grid-template-columns:repeat(7,1fr);gap:6px;
   }
@@ -305,6 +306,13 @@
     cursor:pointer;
   }
   .cal-day.today{outline:2px solid var(--orange);}
+  .cal-event{
+    background:var(--black);color:var(--white);
+    font-size:10px;font-weight:700;padding:3px 5px;border-radius:4px;
+    margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    cursor:pointer;border-left:3px solid var(--green-secondary);
+  }
+  .cal-event-icon{margin-right:3px;}
 
   /* modal */
   .modal-overlay{
@@ -416,6 +424,7 @@
         <button id="cal-prev">‹</button>
         <h2 id="cal-month-label"></h2>
         <button id="cal-next">›</button>
+        <button class="btn-primary" id="add-event-btn" style="margin-left:auto;display:none;">+ Add event</button>
       </div>
       <div class="cal-grid" id="cal-dow-row"></div>
       <div class="cal-grid" id="cal-grid" style="margin-top:6px;"></div>
@@ -491,11 +500,40 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="event-modal-overlay">
+  <div class="modal">
+    <h2 id="event-modal-title">Add event</h2>
+    <div class="field">
+      <label>Event name</label>
+      <input type="text" id="e-title" placeholder="e.g. Race watch party" />
+    </div>
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="e-date" />
+    </div>
+    <div class="field">
+      <label>Time (optional)</label>
+      <input type="text" id="e-time" placeholder="e.g. 7:00 PM" />
+    </div>
+    <div class="field">
+      <label>Details</label>
+      <textarea id="e-notes" placeholder="Where it is, what to bring, etc."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-danger" id="event-delete-btn" style="display:none;">Delete</button>
+      <div style="display:flex;gap:10px;margin-left:auto;">
+        <button class="btn-secondary" id="event-cancel-btn">Cancel</button>
+        <button class="btn-primary" id="event-save-btn">Save event</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 (function(){
   // ---- Supabase config: paste your values from Project Settings -> API ----
-  const SUPABASE_URL = "https://izskshbpjmojrqvhujzt.supabase.co";
+ const SUPABASE_URL = "https://izskshbpjmojrqvhujzt.supabase.co";
   const SUPABASE_ANON_KEY = "sb_publishable_JEedaA9FI6xA_nmKpDvMRw_DRLSqPRJ"
   // ---------------------------------------------------------------------
 
@@ -528,8 +566,10 @@
   }
 
   let posts = [];
+  let events = [];
   let selectedStatuses = new Set();
   let currentEditId = null;
+  let currentEventEditId = null;
   let calDate = new Date();
   const STATUS_ORDER = ['idea','progress','revision','scheduled','posted'];
   const STATUS_LABEL = {idea:'Idea', progress:'In progress', revision:'Need revision', scheduled:'Scheduled', posted:'Posted'};
@@ -554,6 +594,13 @@
       date: p.date || null, owner: p.owner || null, notes: p.notes || null,
       canva_link: p.canvaLink || null, box_link: p.boxLink || null
     };
+  }
+
+  function rowToEvent(row){
+    return { id: row.id, title: row.title, date: row.date, time: row.time, notes: row.notes };
+  }
+  function eventToRow(e){
+    return { id: e.id, title: e.title, date: e.date || null, time: e.time || null, notes: e.notes || null };
   }
 
   function updateCountLabel(){
@@ -607,6 +654,42 @@
     sb.channel('posts-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, ()=>{ loadPosts(); })
       .subscribe();
+    sb.channel('events-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, ()=>{ loadEvents(); })
+      .subscribe();
+  }
+
+  async function loadEvents(){
+    if(!configured) return;
+    try{
+      const { data, error } = await sb.from('events').select('*');
+      if(error) throw error;
+      events = (data||[]).map(rowToEvent);
+    }catch(e){
+      console.error('Load events error', e);
+      events = [];
+    }
+    renderCalendar();
+  }
+
+  async function upsertEvent(ev){
+    try{
+      const { error } = await sb.from('events').upsert(eventToRow(ev));
+      if(error) throw error;
+    }catch(e){
+      console.error('Save event error', e);
+      alert('Could not save event: ' + (e.message || e));
+    }
+  }
+
+  async function deleteEventRow(id){
+    try{
+      const { error } = await sb.from('events').delete().eq('id', id);
+      if(error) throw error;
+    }catch(e){
+      console.error('Delete event error', e);
+      alert('Could not delete event: ' + (e.message || e));
+    }
   }
 
   function initials(name){
@@ -686,6 +769,7 @@
 
   function updateAdminUI(){
     document.getElementById('add-post-btn').style.display = isAdmin ? 'inline-block' : 'none';
+    document.getElementById('add-event-btn').style.display = isAdmin ? 'inline-block' : 'none';
     document.getElementById('admin-toggle-btn').textContent = isAdmin ? 'Admin \u2713 (log out)' : 'Admin';
     document.body.classList.toggle('is-admin', isAdmin);
   }
@@ -792,7 +876,9 @@
       const cell = document.createElement('div');
       cell.className = 'cal-day' + (dateStr===todayStr ? ' today' : '');
       const dayPosts = fp.filter(p=>p.date===dateStr);
+      const dayEvents = events.filter(ev=>ev.date===dateStr);
       cell.innerHTML = `<div class="cal-daynum">${day}<span class="cal-add-hint">+ add</span></div>` +
+        dayEvents.map(ev=>`<div class="cal-event" data-event-id="${ev.id}" title="${escapeHtml(ev.title||'')}${ev.time ? ' · '+escapeHtml(ev.time) : ''}"><span class="cal-event-icon">🏁</span>${escapeHtml(ev.title||'Event')}${ev.time ? ' · '+escapeHtml(ev.time) : ''}</div>`).join('') +
         dayPosts.map(p=>`<div class="cal-chip ${PLATFORM_CLASS[p.platform]||''}" data-id="${p.id}" title="${escapeHtml(p.title||'')}">${escapeHtml(p.title||'Untitled')}</div>`).join('');
       cell.addEventListener('click', ()=>openModal(null, dateStr));
       grid.appendChild(cell);
@@ -801,6 +887,12 @@
       chip.addEventListener('click', (e)=>{
         e.stopPropagation();
         openModal(chip.getAttribute('data-id'));
+      });
+    });
+    grid.querySelectorAll('.cal-event').forEach(el=>{
+      el.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        openEventModal(el.getAttribute('data-event-id'));
       });
     });
   }
@@ -836,6 +928,66 @@
   function closeModal(){
     document.getElementById('modal-overlay').classList.remove('open');
     currentEditId = null;
+  }
+
+  function openEventModal(id, defaultDate){
+    const ev = id ? events.find(x=>x.id===id) : null;
+    if(!isAdmin && !ev) return;
+    currentEventEditId = id || null;
+    const readonly = !isAdmin;
+    document.getElementById('event-modal-title').textContent = readonly ? 'View event' : (ev ? 'Edit event' : 'Add event');
+    document.getElementById('e-title').value = ev ? (ev.title||'') : '';
+    document.getElementById('e-date').value = ev ? (ev.date||'') : (defaultDate || '');
+    document.getElementById('e-time').value = ev ? (ev.time||'') : '';
+    document.getElementById('e-notes').value = ev ? (ev.notes||'') : '';
+    ['e-title','e-date','e-time','e-notes'].forEach(fid=>{ document.getElementById(fid).readOnly = readonly; });
+    document.getElementById('event-delete-btn').style.display = (ev && !readonly) ? 'inline-block' : 'none';
+    document.getElementById('event-save-btn').style.display = readonly ? 'none' : 'inline-block';
+    document.getElementById('event-cancel-btn').textContent = readonly ? 'Close' : 'Cancel';
+    document.getElementById('event-modal-overlay').classList.add('open');
+  }
+
+  function closeEventModal(){
+    document.getElementById('event-modal-overlay').classList.remove('open');
+    currentEventEditId = null;
+  }
+
+  async function saveEvent(){
+    const title = document.getElementById('e-title').value.trim();
+    if(!title){ alert('Give the event a name first.'); return; }
+    const data = {
+      title,
+      date: document.getElementById('e-date').value,
+      time: document.getElementById('e-time').value.trim(),
+      notes: document.getElementById('e-notes').value.trim()
+    };
+    let toSave;
+    let isNewEvent = false;
+    if(currentEventEditId){
+      const idx = events.findIndex(e=>e.id===currentEventEditId);
+      toSave = idx>-1 ? {...events[idx], ...data} : {id: uid(), ...data};
+      if(idx>-1) events[idx] = toSave;
+    }else{
+      isNewEvent = true;
+      toSave = {id: uid(), ...data};
+      events.push(toSave);
+    }
+    renderCalendar();
+    closeEventModal();
+    await upsertEvent(toSave);
+    if(isNewEvent){
+      notifyDiscord(`🏁 **New event:** ${toSave.title}${toSave.date ? ' — '+toSave.date : ''}${toSave.time ? ' at '+toSave.time : ''}`);
+    }
+  }
+
+  async function deleteEvent(){
+    if(!currentEventEditId) return;
+    if(!confirm('Delete this event?')) return;
+    const idToDelete = currentEventEditId;
+    events = events.filter(e=>e.id!==idToDelete);
+    renderCalendar();
+    closeEventModal();
+    await deleteEventRow(idToDelete);
   }
 
   async function saveFromModal(){
@@ -912,6 +1064,13 @@
   document.getElementById('modal-overlay').addEventListener('click', (e)=>{
     if(e.target.id==='modal-overlay') closeModal();
   });
+  document.getElementById('add-event-btn').addEventListener('click', ()=>openEventModal(null));
+  document.getElementById('event-cancel-btn').addEventListener('click', closeEventModal);
+  document.getElementById('event-save-btn').addEventListener('click', saveEvent);
+  document.getElementById('event-delete-btn').addEventListener('click', deleteEvent);
+  document.getElementById('event-modal-overlay').addEventListener('click', (e)=>{
+    if(e.target.id==='event-modal-overlay') closeEventModal();
+  });
   document.getElementById('platform-filter').addEventListener('change', renderAll);
 
   document.querySelectorAll('.tab-btn').forEach(btn=>{
@@ -934,6 +1093,7 @@
   });
 
   loadPosts();
+  loadEvents();
   subscribeRealtime();
 })();
 </script>

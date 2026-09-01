@@ -294,7 +294,11 @@
     padding:6px;font-size:11px;position:relative;
   }
   .cal-day.empty{background:transparent;}
-  .cal-daynum{font-family:var(--font-mono);color:#999;font-size:11px;margin-bottom:4px;}
+  .cal-daynum{font-family:var(--font-mono);color:#999;font-size:11px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;}
+  .cal-add-hint{display:none;font-family:var(--font-body);color:var(--orange);font-weight:700;font-size:10px;}
+  body.is-admin .cal-day:not(.empty){cursor:pointer;}
+  body.is-admin .cal-day:not(.empty):hover{background:#fdf1eb;}
+  body.is-admin .cal-day:not(.empty):hover .cal-add-hint{display:inline;}
   .cal-chip{
     font-size:10px;padding:2px 5px;border-radius:4px;color:var(--white);
     margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -492,7 +496,7 @@
 (function(){
   // ---- Supabase config: paste your values from Project Settings -> API ----
   const SUPABASE_URL = "https://izskshbpjmojrqvhujzt.supabase.co";
-  const SUPABASE_ANON_KEY = "sb_publishable_JEedaA9FI6xA_nmKpDvMRw_DRLSqPRJ";
+  const SUPABASE_ANON_KEY = "sb_publishable_JEedaA9FI6xA_nmKpDvMRw_DRLSqPRJ"
   // ---------------------------------------------------------------------
 
   const configured = SUPABASE_URL.indexOf("YOUR_SUPABASE_URL") === -1 && SUPABASE_ANON_KEY.indexOf("YOUR_SUPABASE_ANON_KEY") === -1;
@@ -501,14 +505,14 @@
   // ---- Admin gate: change this password, then commit. This is a soft gate for an
   // honor-system internal tool, NOT real security — anyone who views the page source
   // can see this password, so don't use it to protect anything sensitive. ----
-  const ADMIN_PASSWORD = "DFR2026";
+  const ADMIN_PASSWORD = "dfr2026";
   let isAdmin = false;
   try{ isAdmin = sessionStorage.getItem('dfr-is-admin') === '1'; }catch(e){}
 
   // ---- Discord notifications: posts to this webhook whenever a post is added
   // or its status changes. Anyone who finds this URL in the page source could
   // post to the channel, so treat it like a shared, low-stakes secret. ----
-  const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1532138357273006171/857-t5oRV9pYkMTi5HE2XqDwRf261DmvurYljOZ0NU6az7_IJZSkblEsqZxamMc-F_q_";
+  const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1531116696226762934/w780xplsJt880ItuRWtkX5j1V9mJdBDv7KVySLOe5SQ5MNDaeFruin6fanus5BdpjiIX";
 
   async function notifyDiscord(message){
     if(!DISCORD_WEBHOOK_URL) return;
@@ -788,18 +792,22 @@
       const cell = document.createElement('div');
       cell.className = 'cal-day' + (dateStr===todayStr ? ' today' : '');
       const dayPosts = fp.filter(p=>p.date===dateStr);
-      cell.innerHTML = `<div class="cal-daynum">${day}</div>` +
+      cell.innerHTML = `<div class="cal-daynum">${day}<span class="cal-add-hint">+ add</span></div>` +
         dayPosts.map(p=>`<div class="cal-chip ${PLATFORM_CLASS[p.platform]||''}" data-id="${p.id}" title="${escapeHtml(p.title||'')}">${escapeHtml(p.title||'Untitled')}</div>`).join('');
+      cell.addEventListener('click', ()=>openModal(null, dateStr));
       grid.appendChild(cell);
     }
     grid.querySelectorAll('.cal-chip').forEach(chip=>{
-      chip.addEventListener('click', ()=>openModal(chip.getAttribute('data-id')));
+      chip.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        openModal(chip.getAttribute('data-id'));
+      });
     });
   }
 
   const MODAL_FIELD_IDS = ['f-title','f-platform','f-status','f-date','f-owner','f-notes','f-canva','f-box'];
 
-  function openModal(id){
+  function openModal(id, defaultDate){
     const post = id ? posts.find(p=>p.id===id) : null;
     if(!isAdmin && !post) return; // non-admins can't open the add-post form
     currentEditId = id || null;
@@ -808,7 +816,7 @@
     document.getElementById('f-title').value = post ? (post.title||'') : '';
     document.getElementById('f-platform').value = post ? (post.platform||'Instagram') : 'Instagram';
     document.getElementById('f-status').value = post ? (post.status||'idea') : 'idea';
-    document.getElementById('f-date').value = post ? (post.date||'') : '';
+    document.getElementById('f-date').value = post ? (post.date||'') : (defaultDate || '');
     document.getElementById('f-owner').value = post ? (post.owner||'') : '';
     document.getElementById('f-notes').value = post ? (post.notes||'') : '';
     document.getElementById('f-canva').value = post ? (post.canvaLink||'') : '';

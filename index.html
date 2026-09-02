@@ -307,10 +307,10 @@
   }
   .cal-day.today{outline:2px solid var(--orange);}
   .cal-event{
-    background:var(--black);color:var(--white);
+    background:var(--orange);color:var(--white);
     font-size:10px;font-weight:700;padding:3px 5px;border-radius:4px;
     margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-    cursor:pointer;border-left:3px solid var(--green-secondary);
+    cursor:pointer;border-left:3px solid var(--green-main);
   }
   .cal-event-icon{margin-right:3px;}
 
@@ -508,8 +508,12 @@
       <input type="text" id="e-title" placeholder="e.g. Race watch party" />
     </div>
     <div class="field">
-      <label>Date</label>
+      <label>Start date</label>
       <input type="date" id="e-date" />
+    </div>
+    <div class="field">
+      <label>End date (optional — leave blank for a single-day event)</label>
+      <input type="date" id="e-end-date" />
     </div>
     <div class="field">
       <label>Event time</label>
@@ -611,14 +615,14 @@
 
   function rowToEvent(row){
     return {
-      id: row.id, title: row.title, date: row.date,
+      id: row.id, title: row.title, date: row.date, endDate: row.end_date,
       allDay: row.all_day, startTime: row.start_time, endTime: row.end_time,
       notes: row.notes
     };
   }
   function eventToRow(e){
     return {
-      id: e.id, title: e.title, date: e.date || null,
+      id: e.id, title: e.title, date: e.date || null, end_date: e.endDate || null,
       all_day: !!e.allDay,
       start_time: e.allDay ? null : (e.startTime || null),
       end_time: e.allDay ? null : (e.endTime || null),
@@ -906,7 +910,11 @@
       const cell = document.createElement('div');
       cell.className = 'cal-day' + (dateStr===todayStr ? ' today' : '');
       const dayPosts = fp.filter(p=>p.date===dateStr);
-      const dayEvents = events.filter(ev=>ev.date===dateStr);
+      const dayEvents = events.filter(ev=>{
+        const start = ev.date;
+        const end = ev.endDate || ev.date;
+        return start && dateStr >= start && dateStr <= end;
+      });
       cell.innerHTML = `<div class="cal-daynum">${day}<span class="cal-add-hint">+ add</span></div>` +
         dayEvents.map(ev=>{
           const t = formatEventTime(ev);
@@ -976,12 +984,13 @@
     document.getElementById('event-modal-title').textContent = readonly ? 'View event' : (ev ? 'Edit event' : 'Add event');
     document.getElementById('e-title').value = ev ? (ev.title||'') : '';
     document.getElementById('e-date').value = ev ? (ev.date||'') : (defaultDate || '');
+    document.getElementById('e-end-date').value = ev ? (ev.endDate||'') : '';
     document.getElementById('e-all-day').value = (ev && ev.allDay) ? 'true' : 'false';
     document.getElementById('e-start-time').value = ev ? (ev.startTime||'') : '';
     document.getElementById('e-end-time').value = ev ? (ev.endTime||'') : '';
     toggleEventTimeFields();
     document.getElementById('e-notes').value = ev ? (ev.notes||'') : '';
-    ['e-title','e-date','e-notes'].forEach(fid=>{ document.getElementById(fid).readOnly = readonly; });
+    ['e-title','e-date','e-end-date','e-notes'].forEach(fid=>{ document.getElementById(fid).readOnly = readonly; });
     ['e-all-day'].forEach(fid=>{ document.getElementById(fid).disabled = readonly; });
     ['e-start-time','e-end-time'].forEach(fid=>{ document.getElementById(fid).readOnly = readonly; });
     document.getElementById('event-delete-btn').style.display = (ev && !readonly) ? 'inline-block' : 'none';
@@ -998,6 +1007,12 @@
   async function saveEvent(){
     const title = document.getElementById('e-title').value.trim();
     if(!title){ alert('Give the event a name first.'); return; }
+    const startDate = document.getElementById('e-date').value;
+    const endDateRaw = document.getElementById('e-end-date').value;
+    if(endDateRaw && startDate && endDateRaw < startDate){
+      alert('End date can\'t be before the start date.');
+      return;
+    }
     const allDay = document.getElementById('e-all-day').value === 'true';
     const startTime = document.getElementById('e-start-time').value;
     const endTime = document.getElementById('e-end-time').value;
@@ -1007,7 +1022,8 @@
     }
     const data = {
       title,
-      date: document.getElementById('e-date').value,
+      date: startDate,
+      endDate: endDateRaw || null,
       allDay,
       startTime: allDay ? null : (startTime || null),
       endTime: allDay ? null : (endTime || null),
@@ -1028,7 +1044,8 @@
     closeEventModal();
     await upsertEvent(toSave);
     if(isNewEvent){
-      notifyDiscord(`🏁 **New event:** ${toSave.title}${toSave.date ? ' — '+toSave.date : ''}${toSave.allDay ? ' (all day)' : (toSave.startTime ? ' at '+toSave.startTime : '')}`);
+      const dateRange = toSave.date ? (toSave.endDate && toSave.endDate !== toSave.date ? ` — ${toSave.date} to ${toSave.endDate}` : ` — ${toSave.date}`) : '';
+      notifyDiscord(`🏁 **New event:** ${toSave.title}${dateRange}${toSave.allDay ? ' (all day)' : (toSave.startTime ? ' at '+toSave.startTime : '')}`);
     }
   }
 
